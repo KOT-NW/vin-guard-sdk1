@@ -72,16 +72,18 @@ the documented idempotency header. Retrying a chat POST may duplicate billing.
 ## Install and verify
 
 ```bash
-python -m pip install -e './sdk-python[dev]'
-python -m pytest sdk-python/tests -q
+python -m pip install -e '.[dev]'
+python -m pytest -q
 ```
 
 The default run skips `tests/integration` (real-stack smoke). CI has separate
-`sdk-core` (no LangChain), `sdk-langchain` (extra required), `sdk-package`
-(wheel/sdist installed into a clean venv outside the source tree) and
-`sdk-smoke` jobs, across Python 3.10/3.12 and HTTPX 0.27.0/0.28.1, with
-`langchain-core` 1.0.0/1.6.7. The adapter tests import LangChain directly, so a
-missing dependency fails collection instead of skipping green.
+`sdk-core` (no LangChain), `sdk-langchain` (extra required) and `sdk-package`
+(wheel/sdist installed into a clean venv outside the source tree) jobs, across
+Python 3.10/3.12 and HTTPX 0.27.0/0.28.1, with `langchain-core` 1.0.0/1.6.7.
+The adapter tests import LangChain directly, so a missing dependency fails
+collection instead of skipping green. Publishing a GitHub Release runs
+`.github/workflows/publish.yml`, which rebuilds the same artifacts and uploads
+them to PyPI with Trusted Publishing (no stored token).
 
 ## Async data plane
 
@@ -174,8 +176,8 @@ The `sdk-python` branch contains the core SDK plus an optional native
 `ChatGateway` model.
 
 ```bash
-python -m pip install -e './sdk-python[dev,langchain]'
-python -m pytest sdk-python/tests -q
+python -m pip install -e '.[dev,langchain]'
+python -m pytest -q
 ```
 
 ```python
