@@ -1,0 +1,323 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "27"
+      - name: Backend build + tests
+        working-directory: backend
+        run: ./mvnw -B verify
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint --if-present
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+
+  # Control plane: typecheck, bundle, publisher record tests, deploy-script tests.
+  controlplane:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: controlplane/package-lock.json
+      - run: npm ci
+        working-directory: controlplane
+      - run: npm run typecheck
+        working-directory: controlplane
+      - run: npm run build
+        working-directory: controlplane
+      - name: Publisher record and backfill tests
+        run: npm test
+        working-directory: controlplane
+      - name: Deploy-script stage regression
+        run: bash controlplane/infra/lib_test.sh
+
+  # Core SDK only: no LangChain, clean install, floor/current runtime + HTTPX.
+  sdk-core:
+    name: SDK core (py${{ matrix.python }} / httpx ${{ matrix.httpx }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python: "3.10"
+            httpx: "0.27.0"
+          - python: "3.12"
+            httpx: "0.28.1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install core SDK (no LangChain extra)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "httpx==${{ matrix.httpx }}" "./sdk-python[dev]"
+      - name: Prove the core import does not pull langchain_core
+        run: |
+          python - <<'PY'
+          import sys
+          import ai_gateway  # noqa: F401
+          assert "langchain_core" not in sys.modules, "core import pulled langchain_core"
+          try:
+              import ai_gateway.langchain  # noqa: F401
+          except ImportError as exc:
+              assert "ai-gateway-sdk[langchain]" in str(exc), str(exc)
+          else:
+              raise SystemExit("langchain extra unexpectedly importable in a core-only env")
+          print("core import OK; langchain_core absent; optional guard enforced")
+          PY
+      - name: Record resolved versions and pip check
+        run: |
+          python -VV
+          python -c "import httpx; print('httpx', httpx.__version__)"
+          python -m pip check
+      - name: Core tests (adapter module excluded)
+        run: python -m pytest sdk-python/tests --ignore=sdk-python/tests/test_langchain.py -q
+
+  # LangChain adapter: dependency must be present and collect; missing dep fails.
+  sdk-langchain:
+    name: SDK LangChain (py${{ matrix.python }} / langchain-core ${{ matrix.langchain }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python: "3.10"
+            langchain: "1.0.0"
+            httpx: "0.27.0"
+          - python: "3.12"
+            langchain: "1.6.7"
+            httpx: "0.28.1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install SDK with the LangChain extra
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "langchain-core==${{ matrix.langchain }}" \
+            "httpx==${{ matrix.httpx }}" "./sdk-python[dev,langchain]"
+      - name: Confirm the optional dependency is present
+        run: python -c "import langchain_core; print('langchain-core', langchain_core.__version__)"
+      - name: Record resolved versions and pip check
+        run: |
+          python -VV
+          python -c "import httpx; print('httpx', httpx.__version__)"
+          python -m pip check
+      - name: Adapter tests (a missing dependency fails collection, not skip)
+        run: python -m pytest sdk-python/tests -q
+
+  # Wheel/sdist built and installed into a clean venv outside the checkout.
+  sdk-package:
+    name: SDK wheel/sdist clean install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel and sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --outdir dist sdk-python
+          ls -l dist
+      - name: Assert wheel metadata keeps LangChain optional
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          wheel = glob.glob("dist/ai_gateway_sdk-*.whl")[0]
+          with zipfile.ZipFile(wheel) as archive:
+              metadata = archive.read(
+                  [n for n in archive.namelist() if n.endswith("METADATA")][0]
+              ).decode()
+          base, _, extra = metadata.partition("Provides-Extra: langchain")
+          assert "Requires-Dist: httpx" in base, metadata
+          assert "langchain-core" not in base, "langchain-core leaked into base requires"
+          assert "Requires-Dist: langchain-core" in extra, metadata
+          print("wheel metadata OK: httpx required, langchain-core optional")
+          PY
+      - name: Install wheel into a clean venv outside the checkout
+        run: |
+          python -m venv "$RUNNER_TEMP/pkg-venv"
+          "$RUNNER_TEMP/pkg-venv/bin/pip" install --upgrade pip
+          "$RUNNER_TEMP/pkg-venv/bin/pip" install dist/ai_gateway_sdk-*.whl
+      - name: Smoke import from outside the source tree
+        working-directory: ${{ runner.temp }}
+        run: |
+          "$RUNNER_TEMP/pkg-venv/bin/python" - <<'PY'
+          import pathlib, sys
+          import ai_gateway
+          path = pathlib.Path(ai_gateway.__file__).resolve()
+          print("imported from", path)
+          assert "site-packages" in str(path), path
+          assert "${{ github.workspace }}" not in str(path), "imported from the checkout"
+          assert "langchain_core" not in sys.modules
+          assert (path.parent / "py.typed").is_file(), "py.typed missing"
+          for name in ("GatewayClient", "AsyncGatewayClient", "ControlPlaneClient",
+                       "GatewayError", "GatewayTransportError", "GatewayTimeoutError"):
+              assert hasattr(ai_gateway, name), name
+          try:
+              import ai_gateway.langchain  # noqa: F401
+          except ImportError as exc:
+              assert "ai-gateway-sdk[langchain]" in str(exc), str(exc)
+          else:
+              raise SystemExit("langchain extra unexpectedly importable")
+          print("wheel smoke import OK; py.typed present; optional guard enforced")
+          PY
+      - name: pip check (base wheel)
+        run: "$RUNNER_TEMP/pkg-venv/bin/pip check"
+      - name: Install the optional extra into the same clean venv
+        run: |
+          WHEEL=$(ls dist/ai_gateway_sdk-*.whl)
+          "$RUNNER_TEMP/pkg-venv/bin/pip" install "${WHEEL}[langchain]"
+          "$RUNNER_TEMP/pkg-venv/bin/pip" check
+          "$RUNNER_TEMP/pkg-venv/bin/python" -c "from ai_gateway.langchain import ChatGateway; print('adapter import OK')"
+
+  # Real end-to-end smoke: control plane -> publisher -> Valkey -> Java gateway.
+  sdk-smoke:
+    name: SDK end-to-end smoke (real stack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "27"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install local prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client zip
+          aws --version
+          docker --version
+      - name: Provide Floci AWS profile credentials
+        run: |
+          mkdir -p "$HOME/.aws"
+          cat > "$HOME/.aws/credentials" <<'EOF'
+          [floci]
+          aws_access_key_id = test
+          aws_secret_access_key = test
+          EOF
+          cat > "$HOME/.aws/config" <<'EOF'
+          [profile floci]
+          region = us-east-1
+          EOF
+      - name: Start Floci (isolated local AWS emulator)
+        run: |
+          docker compose -f controlplane/infra/floci.yml up -d
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:4566/_floci/health >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS http://localhost:4566/_floci/health
+      - name: Deploy the control plane to Floci
+        working-directory: controlplane
+        env:
+          AWS_PROFILE: floci
+        run: |
+          bash infra/deploy-local.sh | tee "$RUNNER_TEMP/deploy.log"
+          CP_URL=$(grep -oE 'http://localhost:4566/execute-api/[A-Za-z0-9_-]+/\$default/api/v1' \
+            "$RUNNER_TEMP/deploy.log" | head -1)
+          test -n "$CP_URL"
+          echo "AIGW_CONTROL_PLANE_URL=$CP_URL" >> "$GITHUB_ENV"
+      - name: Wait for Postgres and Valkey host ports
+        run: |
+          for port in 7001 6379; do
+            for i in $(seq 1 60); do
+              if (echo > "/dev/tcp/127.0.0.1/$port") 2>/dev/null; then break; fi
+              sleep 2
+            done
+            (echo > "/dev/tcp/127.0.0.1/$port")
+          done
+      - name: Build and start the Java data plane
+        run: |
+          ( cd backend && ./mvnw -q -Dmaven.test.skip=true package )
+          JAR=$(find backend/target -maxdepth 1 -name '*.jar' ! -name '*.original' | head -1)
+          test -n "$JAR"
+          # deploy-local.sh already applied V1-V6 to this shared database, so the
+          # data plane must not re-run Flyway against an existing schema.
+          KEY_PEPPER=dev-pepper \
+          DB_URL=jdbc:postgresql://localhost:7001/postgres DB_USER=app DB_PASSWORD=app \
+          REDIS_HOST=localhost REDIS_PORT=6379 SPRING_FLYWAY_ENABLED=false \
+          nohup java -jar "$JAR" > "$RUNNER_TEMP/backend.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/backend.pid"
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:8080/healthz >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS http://localhost:8080/healthz
+      - name: Install the SDK with the LangChain extra
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "./sdk-python[dev,langchain]"
+      - name: Run the real smoke test
+        env:
+          AIGW_SMOKE: "1"
+          AIGW_GATEWAY_URL: "http://localhost:8080/v1"
+          AIGW_REQUIRE_LANGCHAIN: "1"
+          AIGW_PUBLISH_COMMAND: >-
+            aws --endpoint-url http://localhost:4566 --region us-east-1
+            lambda invoke --function-name aigw-publisher --payload {}
+            --cli-binary-format raw-in-base64-out --no-cli-pager --output json
+            ${{ runner.temp }}/publish.json
+          AWS_PROFILE: floci
+        run: python -m pytest sdk-python/tests/integration -q -s
+      - name: Redacted diagnostics on failure
+        if: failure()
+        run: |
+          echo "===== backend.log (redacted) ====="
+          sed -E 's/gw_live_[A-Za-z0-9_]+/gw_live_<redacted>/g' "$RUNNER_TEMP/backend.log" | tail -200 || true
+          echo "===== deploy.log (redacted) ====="
+          sed -E 's/gw_live_[A-Za-z0-9_]+/gw_live_<redacted>/g' "$RUNNER_TEMP/deploy.log" | tail -100 || true
+          echo "===== containers ====="
+          docker ps -a || true
+      - name: Tear down the isolated stack
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/backend.pid" ]; then kill "$(cat "$RUNNER_TEMP/backend.pid")" || true; fi
+          docker compose -f controlplane/infra/floci.yml down -v || true
+
+  data-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pipeline test dependencies
+        run: python -m pip install "pytest>=8"
+      - run: python -m pytest data-pipeline/tests -q
