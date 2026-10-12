@@ -1,0 +1,3 @@
+include RESEARCH.md
+include src/ai_gateway/py.typed
+recursive-include examples *.py
