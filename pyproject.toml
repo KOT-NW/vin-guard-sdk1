@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ai-gateway-sdk"
+name = "vin-guard-sdk"
 version = "0.3.0"
 description = "Sync and async AI Gateway clients with routing metadata and dashboard reads"
 readme = "README.md"

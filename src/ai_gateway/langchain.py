@@ -1,6 +1,6 @@
 """Optional native LangChain adapter retaining gateway routing metadata.
 
-Install `ai-gateway-sdk[langchain]` and import ChatGateway from this module.
+Install `vin-guard-sdk[langchain]` and import ChatGateway from this module.
 The current server is non-streaming: BaseChatModel supplies a buffered
 stream/astream fallback, while invoke/ainvoke use sync/native async HTTP.
 """
@@ -21,7 +21,7 @@ try:
     from langchain_core.utils.function_calling import convert_to_openai_tool
     from pydantic import ConfigDict, Field, PrivateAttr, SecretStr, field_validator
 except ImportError as exc:
-    raise ImportError("Install the optional integration: pip install 'ai-gateway-sdk[langchain]'") from exc
+    raise ImportError("Install the optional integration: pip install 'vin-guard-sdk[langchain]'") from exc
 
 from .async_client import AsyncGatewayClient
 from .client import ChatCompletion, GatewayClient

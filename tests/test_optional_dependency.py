@@ -20,7 +20,7 @@ assert "langchain_core" not in sys.modules
 try:
     import ai_gateway.langchain
 except ImportError as exc:
-    assert "ai-gateway-sdk[langchain]" in str(exc)
+    assert "vin-guard-sdk[langchain]" in str(exc)
 else:
     raise AssertionError("Optional dependency was not enforced")
 '''

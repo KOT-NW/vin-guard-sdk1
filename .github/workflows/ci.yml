@@ -47,7 +47,7 @@ jobs:
           try:
               import ai_gateway.langchain  # noqa: F401
           except ImportError as exc:
-              assert "ai-gateway-sdk[langchain]" in str(exc), str(exc)
+              assert "vin-guard-sdk[langchain]" in str(exc), str(exc)
           else:
               raise SystemExit("langchain extra unexpectedly importable in a core-only env")
           print("core import OK; langchain_core absent; optional guard enforced")
@@ -116,7 +116,7 @@ jobs:
         run: |
           python - <<'PY'
           import glob, zipfile
-          wheel = glob.glob("dist/ai_gateway_sdk-*.whl")[0]
+          wheel = glob.glob("dist/vin_guard_sdk-*.whl")[0]
           with zipfile.ZipFile(wheel) as archive:
               metadata = archive.read(
                   [n for n in archive.namelist() if n.endswith("METADATA")][0]
@@ -131,7 +131,7 @@ jobs:
         run: |
           python -m venv "$RUNNER_TEMP/pkg-venv"
           "$RUNNER_TEMP/pkg-venv/bin/pip" install --upgrade pip
-          "$RUNNER_TEMP/pkg-venv/bin/pip" install dist/ai_gateway_sdk-*.whl
+          "$RUNNER_TEMP/pkg-venv/bin/pip" install dist/vin_guard_sdk-*.whl
       - name: Smoke import from outside the source tree
         working-directory: ${{ runner.temp }}
         run: |
@@ -150,7 +150,7 @@ jobs:
           try:
               import ai_gateway.langchain  # noqa: F401
           except ImportError as exc:
-              assert "ai-gateway-sdk[langchain]" in str(exc), str(exc)
+              assert "vin-guard-sdk[langchain]" in str(exc), str(exc)
           else:
               raise SystemExit("langchain extra unexpectedly importable")
           print("wheel smoke import OK; py.typed present; optional guard enforced")
@@ -159,7 +159,7 @@ jobs:
         run: "$RUNNER_TEMP/pkg-venv/bin/pip check"
       - name: Install the optional extra into the same clean venv
         run: |
-          WHEEL=$(ls dist/ai_gateway_sdk-*.whl)
+          WHEEL=$(ls dist/vin_guard_sdk-*.whl)
           "$RUNNER_TEMP/pkg-venv/bin/pip" install "${WHEEL}[langchain]"
           "$RUNNER_TEMP/pkg-venv/bin/pip" check
           "$RUNNER_TEMP/pkg-venv/bin/python" -c "from ai_gateway.langchain import ChatGateway; print('adapter import OK')"
