@@ -16,7 +16,7 @@ from .errors import GatewayError
 
 class AsyncGatewayClient:
     def __init__(self, *, api_key: str,
-                 base_url: str = "https://gateway.example.com/v1",
+                 base_url: str = "http://136.81.141.176/v1",
                  timeout: float | httpx.Timeout = 30.0,
                  transport: httpx.AsyncBaseTransport | None = None) -> None:
         if not api_key:

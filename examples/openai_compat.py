@@ -8,7 +8,7 @@ from openai import OpenAI
 def main() -> None:
     client = OpenAI(
         api_key=os.environ.get("GW_API_KEY", "gw_live_demo"),
-        base_url=os.environ.get("GW_BASE_URL", "http://localhost:8080/v1"),
+        base_url=os.environ.get("GW_BASE_URL", "http://136.81.141.176/v1"),
     )
     resp = client.chat.completions.create(
         model="auto",

@@ -3,6 +3,8 @@
 Thin wrapper over the OpenAI-compatible data plane (`docs/API_DESIGN.md §3`,
 `docs/ai-gateway-design.md §4.9`).
 
+**Hybrid demo endpoint:** The default URL below uses unencrypted HTTP and a temporary load-balancer IP. Use disposable test keys only; pass an HTTPS base_url for real credentials.
+
 ## Level 0 — use any OpenAI SDK as-is
 
 ```python
@@ -10,7 +12,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="gw_live_...",
-    base_url="https://gateway.example.com/v1",
+    base_url="http://136.81.141.176/v1",
 )
 resp = client.chat.completions.create(
     model="auto",  # or policy/<name> | <provider>/<model> | alias
@@ -27,7 +29,7 @@ from ai_gateway import GatewayClient
 
 client = GatewayClient(
     api_key="gw_live_...",
-    base_url="https://gateway.example.com/v1",
+    base_url="http://136.81.141.176/v1",
 )
 resp = client.chat_completions(
     model="auto",
@@ -95,7 +97,7 @@ from ai_gateway import AsyncGatewayClient
 async def main():
     async with AsyncGatewayClient(
         api_key=os.environ["GATEWAY_API_KEY"],
-        base_url=os.getenv("GATEWAY_BASE_URL", "http://localhost:8080/v1"),
+        base_url=os.getenv("GATEWAY_BASE_URL", "http://136.81.141.176/v1"),
     ) as client:
         response = await client.chat_completions(
             model="auto", messages=[{"role": "user", "content": "Hello"}],
@@ -190,7 +192,7 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 with ChatGateway(
     api_key=os.environ["GATEWAY_API_KEY"],
-    base_url="http://localhost:8080/v1",
+    base_url="http://136.81.141.176/v1",
     model="auto", max_tokens=200,
     gateway_tags={"team": "support"},
     gateway_metadata={"ticket": "t-123"},
@@ -210,7 +212,7 @@ via LangChain's fallback; they do not request server SSE or token streaming.
 
 ```python
 async with ChatGateway(api_key=os.environ["GATEWAY_API_KEY"],
-                       base_url="http://localhost:8080/v1") as model:
+                       base_url="http://136.81.141.176/v1") as model:
     messages = await model.abatch(["Explain routing", "Explain budgets"],
                                   config={"max_concurrency": 2})
 ```

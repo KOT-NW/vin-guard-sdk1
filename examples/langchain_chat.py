@@ -12,7 +12,7 @@ def main():
     ])
     with ChatGateway(
         api_key=os.environ["GATEWAY_API_KEY"],
-        base_url=os.getenv("GATEWAY_BASE_URL", "http://localhost:8080/v1"),
+        base_url=os.getenv("GATEWAY_BASE_URL", "http://136.81.141.176/v1"),
         model="auto", max_tokens=200, gateway_tags={"team": "sdk-demo"},
     ) as model:
         result = (prompt | model).invoke({"question": "How does an AI Gateway choose a model?"})

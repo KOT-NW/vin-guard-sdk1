@@ -77,7 +77,7 @@ class ChatGateway(BaseChatModel):
 
     api_key: SecretStr = Field(exclude=True, repr=False)
     model: str = "auto"
-    base_url: str = "https://gateway.example.com/v1"
+    base_url: str = "http://136.81.141.176/v1"
     timeout: float = 30.0
     temperature: float | None = None
     max_tokens: int | None = None
