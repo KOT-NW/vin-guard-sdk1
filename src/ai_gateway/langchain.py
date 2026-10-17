@@ -85,6 +85,8 @@ class ChatGateway(BaseChatModel):
     gateway_metadata: dict[str, Any] | None = None
     route_policy: str | None = None
     no_store: bool = False
+    # P3: buffered is the strict path; stream notes the window-cut (design §4.1).
+    safety_mode: str | None = None
     allow_advanced_options: bool = False
     cache: BaseCache | bool | None = False
     client: GatewayClient | None = Field(default=None, exclude=True, repr=False)
@@ -110,6 +112,7 @@ class ChatGateway(BaseChatModel):
         return {"model": self.model, "base_url": self.base_url,
                 "temperature": self.temperature, "max_tokens": self.max_tokens,
                 "route_policy": self.route_policy, "no_store": self.no_store,
+                "safety_mode": self.safety_mode,
                 "gateway_tags": self.gateway_tags, "gateway_metadata": self.gateway_metadata,
                 "allow_advanced_options": self.allow_advanced_options}
 
@@ -135,7 +138,8 @@ class ChatGateway(BaseChatModel):
                  kwargs: dict[str, Any]) -> dict[str, Any]:
         options = {"temperature": self.temperature, "max_tokens": self.max_tokens,
                    "tags": self.gateway_tags, "metadata": self.gateway_metadata,
-                   "route_policy": self.route_policy, "no_store": self.no_store}
+                   "route_policy": self.route_policy, "no_store": self.no_store,
+                   "safety_mode": self.safety_mode}
         overrides = dict(kwargs)
         # BaseChatModel.with_structured_output supplies this tracing hint.
         overrides.pop("ls_structured_output_format", None)

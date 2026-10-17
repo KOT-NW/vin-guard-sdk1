@@ -66,6 +66,22 @@ def parse_chat_response(response: httpx.Response) -> ChatCompletion:
                            ("prompt_tokens", "completion_tokens", "total_tokens")})
         cost_usd = float(gateway["costUsd"] if gateway.get("costUsd") is not None
                          else headers.get("x-gateway-cost-usd") or 0)
+        # P3 guardrail surface (design §10): `_gateway` first, `x-gateway-*`
+        # headers as fallback (the data plane may omit the body on errors).
+        raw_guardrails = gateway.get("guardrails")
+        guardrails = raw_guardrails if isinstance(raw_guardrails, list) else []
+        raw_ms = gateway.get("guardrailMs")
+        if raw_ms is None:
+            raw_ms = gateway.get("guardrail_ms")
+        if raw_ms is None:
+            raw_ms = headers.get("x-gateway-guardrail-ms")
+        guardrail_ms = int(raw_ms) if raw_ms is not None and str(raw_ms).strip() != "" else None
+        raw_cost = gateway.get("guardrailCostUsd")
+        if raw_cost is None:
+            raw_cost = gateway.get("guardrail_cost_usd")
+        if raw_cost is None:
+            raw_cost = headers.get("x-gateway-guardrail-cost-usd")
+        guardrail_cost = float(raw_cost) if raw_cost is not None and str(raw_cost).strip() != "" else 0.0
     except (ValueError, TypeError) as exc:
         raise GatewayError("Gateway returned an unexpected response body",
                            code="invalid_response", status=response.status_code,
@@ -80,6 +96,9 @@ def parse_chat_response(response: httpx.Response) -> ChatCompletion:
             tier=gateway.get("tier") or headers.get("x-gateway-route-tier", ""),
             policy=gateway.get("policy"), confidence=gateway.get("confidence"),
             cost_usd=cost_usd,
+            guardrails=guardrails if all(isinstance(g, dict) for g in guardrails) else [],
+            guardrail_ms=guardrail_ms,
+            guardrail_cost_usd=guardrail_cost,
         ), headers=headers, raw=payload,
     )
 

@@ -2,12 +2,13 @@
 
 from .client import ChatCompletion, GatewayClient, ModelEntry
 from .async_client import AsyncGatewayClient
-from .control_plane import ControlPlaneClient, Page
+from .control_plane import AsyncControlPlaneClient, ControlPlaneClient, Page
 from .errors import (GatewayConnectionError, GatewayError, GatewayTimeoutError,
                      GatewayTransportError)
 from .types import GatewayInfo, Usage
 
 __all__ = [
+    "AsyncControlPlaneClient",
     "AsyncGatewayClient",
     "ControlPlaneClient",
     "Page",

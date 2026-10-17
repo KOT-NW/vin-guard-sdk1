@@ -11,7 +11,8 @@ from .errors import GatewayError, snippet, transport_error_from
 GATEWAY_HEADERS = (
     "x-gateway-request-id", "x-gateway-provider", "x-gateway-model",
     "x-gateway-route-tier", "x-gateway-route-reason", "x-gateway-cost-usd",
-    "x-gateway-latency-ms", "x-ratelimit-remaining-requests",
+    "x-gateway-latency-ms", "x-gateway-guardrail-ms", "x-gateway-guardrail-cost-usd",
+    "x-ratelimit-remaining-requests",
     "x-ratelimit-remaining-tokens", "retry-after",
 )
 
@@ -88,9 +89,16 @@ def chat_request(*, model: str, messages: list[dict[str, Any]], stream=False,
                  temperature=None, max_tokens=None, top_p=None, stop=None,
                  tools=None, tool_choice=None, response_format=None, user=None,
                  seed=None, tags=None, metadata=None, route_policy=None,
-                 no_store=False, idempotency_key=None):
+                 no_store=False, idempotency_key=None, safety_mode=None):
     """Accept the documented chat subset; reject misspelled options."""
     body = {"model": model, "messages": messages, "stream": stream}
+    if safety_mode is not None:
+        # P3 buffered strict path (design §4.1): stream notes the window-cut,
+        # anything else is buffered. Validated here so a typo never silently
+        # becomes the strict path.
+        if safety_mode not in ("stream", "buffered"):
+            raise ValueError("safety_mode must be 'stream' or 'buffered'")
+        body["safety_mode"] = safety_mode
     options = dict(temperature=temperature, max_tokens=max_tokens, top_p=top_p,
                    stop=stop, tools=tools, tool_choice=tool_choice,
                    response_format=response_format, user=user, seed=seed)
